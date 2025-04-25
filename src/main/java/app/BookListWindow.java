@@ -2,6 +2,7 @@ package app;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -15,6 +16,9 @@ public class BookListWindow extends Stage {
 
     private TableView<Book> tableView;
     private ObservableList<Book> bookList;
+    private static final String URL = "jdbc:oracle:thin:@localhost:1521:xe";
+    private static final String USER = "MAHMOUD";
+    private static final String PASS = "mahmoud";
 
     public BookListWindow() {
         VBox root = new VBox(10);
@@ -33,70 +37,68 @@ public class BookListWindow extends Stage {
 
         root.getChildren().addAll(titleLabel, tableView, buttonBox);
 
-        addButton.setOnAction(e -> showBookForm(null)); // null means "Add"
+        addButton.setOnAction(e -> showBookForm(null));
         editButton.setOnAction(e -> {
             Book selected = tableView.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                showBookForm(selected); // edit mode
-            }
+            if (selected != null) showBookForm(selected);
         });
         deleteButton.setOnAction(e -> {
             Book selected = tableView.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                deleteBook(selected);
-            }
+            if (selected != null) deleteBook(selected);
         });
 
-        Scene scene = new Scene(root, 700, 400);
-        this.setTitle("Gestion des livres");
-        this.setScene(scene);
+        setScene(new Scene(root, 700, 400));
+        setTitle("Gestion des livres");
 
         refreshTable();
     }
 
     private void setupTableView() {
-        TableColumn<Book, Integer> codeCol = new TableColumn<>("Code");
-        codeCol.setCellValueFactory(new PropertyValueFactory<>("code"));
+        TableColumn<Book, Number> codeCol = new TableColumn<>("Code");
+        codeCol.setCellValueFactory(data -> data.getValue().codeProperty());
 
         TableColumn<Book, String> titreCol = new TableColumn<>("Titre");
-        titreCol.setCellValueFactory(new PropertyValueFactory<>("titre"));
+        titreCol.setCellValueFactory(data -> data.getValue().titreProperty());
 
         TableColumn<Book, String> auteurCol = new TableColumn<>("Auteur");
-        auteurCol.setCellValueFactory(new PropertyValueFactory<>("auteur"));
+        auteurCol.setCellValueFactory(data -> data.getValue().auteurProperty());
 
         TableColumn<Book, String> categorieCol = new TableColumn<>("Catégorie");
-        categorieCol.setCellValueFactory(new PropertyValueFactory<>("categorie"));
+        categorieCol.setCellValueFactory(data -> data.getValue().categorieProperty());
 
-        TableColumn<Book, Integer> anneeCol = new TableColumn<>("Année");
-        anneeCol.setCellValueFactory(new PropertyValueFactory<>("annee"));
+        TableColumn<Book, Number> anneeCol = new TableColumn<>("Année");
+        anneeCol.setCellValueFactory(data -> data.getValue().anneeProperty());
 
-        TableColumn<Book, Integer> quantiteCol = new TableColumn<>("Quantité");
-        quantiteCol.setCellValueFactory(new PropertyValueFactory<>("quantite"));
+        TableColumn<Book, Number> quantiteCol = new TableColumn<>("Quantité");
+        quantiteCol.setCellValueFactory(data -> data.getValue().quantiteProperty());
 
         tableView.getColumns().addAll(codeCol, titreCol, auteurCol, categorieCol, anneeCol, quantiteCol);
     }
 
     private void refreshTable() {
-        bookList = FXCollections.observableArrayList();
-        try (Connection conn = DriverManager.getConnection("jdbc:oracle:thin:@localhost:1521:xe", "", "mahmoud");
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM LIVRE")) {
-
-            while (rs.next()) {
-                bookList.add(new Book(
-                        rs.getInt("CODE_LIVRE"),
-                        rs.getString("TITRE"),
-                        rs.getString("AUTEUR"),
-                        rs.getString("CATEGORIE"),
-                        rs.getInt("ANNEE_PUBLICATION"),
-                        rs.getInt("QUANTITE_DISPONIBLE")
-                ));
+        Task<ObservableList<Book>> task = new Task<>() {
+            @Override protected ObservableList<Book> call() throws Exception {
+                ObservableList<Book> list = FXCollections.observableArrayList();
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+                     Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM livres")) {
+                    while (rs.next()) {
+                        list.add(new Book(
+                                rs.getInt("CodeLivre"),
+                                rs.getString("Titre"),
+                                rs.getString("Auteur"),
+                                rs.getString("Categorie"),
+                                rs.getInt("AnneePublication"),
+                                rs.getInt("QuantiteDisponible")
+                        ));
+                    }
+                }
+                return list;
             }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        tableView.setItems(bookList);
+        };
+        task.setOnSucceeded(e -> tableView.setItems(task.getValue()));
+        task.setOnFailed(e -> task.getException().printStackTrace());
+        new Thread(task).start();
     }
 
     private void showBookForm(Book book) {
@@ -104,23 +106,13 @@ public class BookListWindow extends Stage {
         VBox form = new VBox(10);
         form.setPadding(new Insets(10));
 
-        TextField titreField = new TextField();
-        titreField.setPromptText("Titre");
-
-        TextField auteurField = new TextField();
-        auteurField.setPromptText("Auteur");
-
-        TextField categorieField = new TextField();
-        categorieField.setPromptText("Catégorie");
-
-        TextField anneeField = new TextField();
-        anneeField.setPromptText("Année de publication");
-
-        TextField quantiteField = new TextField();
-        quantiteField.setPromptText("Quantité disponible");
+        TextField titreField = new TextField(); titreField.setPromptText("Titre");
+        TextField auteurField = new TextField(); auteurField.setPromptText("Auteur");
+        TextField categorieField = new TextField(); categorieField.setPromptText("Catégorie");
+        TextField anneeField = new TextField(); anneeField.setPromptText("Année de publication");
+        TextField quantiteField = new TextField(); quantiteField.setPromptText("Quantité disponible");
 
         if (book != null) {
-            // Edit mode: fill fields
             titreField.setText(book.titreProperty().get());
             auteurField.setText(book.auteurProperty().get());
             categorieField.setText(book.categorieProperty().get());
@@ -129,39 +121,46 @@ public class BookListWindow extends Stage {
         }
 
         Button saveButton = new Button("Enregistrer");
-
         saveButton.setOnAction(e -> {
-            String titre = titreField.getText();
-            String auteur = auteurField.getText();
-            String categorie = categorieField.getText();
-            int annee = Integer.parseInt(anneeField.getText());
-            int quantite = Integer.parseInt(quantiteField.getText());
-
-            try (Connection conn = DriverManager.getConnection("jdbc:oracle:thin:@localhost:1521:xe", "MAHMOUD", "mahmoud")) {
-                PreparedStatement stmt;
-                if (book == null) {
-                    // INSERT
-                    stmt = conn.prepareStatement("INSERT INTO LIVRE VALUES (SEQ_LIVRE.NEXTVAL, ?, ?, ?, ?, ?)");
-                } else {
-                    // UPDATE
-                    stmt = conn.prepareStatement("UPDATE LIVRE SET TITRE=?, AUTEUR=?, CATEGORIE=?, ANNEE_PUBLICATION=?, QUANTITE_DISPONIBLE=? WHERE CODE_LIVRE=?");
-                    stmt.setInt(6, book.codeProperty().get());
-                }
-
-                stmt.setString(1, titre);
-                stmt.setString(2, auteur);
-                stmt.setString(3, categorie);
-                stmt.setInt(4, annee);
-                stmt.setInt(5, quantite);
-                stmt.executeUpdate();
-
-            } catch (SQLException ex) {
-                ex.printStackTrace();
+            // validation simple
+            if (titreField.getText().isBlank() || anneeField.getText().isBlank()) {
+                new Alert(Alert.AlertType.WARNING, "Titre et année obligatoires").showAndWait();
+                return;
             }
-
-            formStage.close();
-            refreshTable();
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
+                        PreparedStatement stmt;
+                        if (book == null) {
+                            stmt = conn.prepareStatement(
+                                    "INSERT INTO livres (Titre,Auteur,Categorie,AnneePublication,QuantiteDisponible) VALUES (?,?,?,?,?)");
+                        } else {
+                            stmt = conn.prepareStatement(
+                                    "UPDATE livres SET Titre=?,Auteur=?,Categorie=?,AnneePublication=?,QuantiteDisponible=? WHERE CodeLivre=?");
+                            stmt.setInt(6, book.codeProperty().get());
+                        }
+                        stmt.setString(1, titreField.getText());
+                        stmt.setString(2, auteurField.getText());
+                        stmt.setString(3, categorieField.getText());
+                        stmt.setInt(4, Integer.parseInt(anneeField.getText()));
+                        stmt.setInt(5, Integer.parseInt(quantiteField.getText()));
+                        stmt.executeUpdate();
+                    }
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                formStage.close();
+                refreshTable();
+            });
+            task.setOnFailed(ev -> {
+                Throwable ex = task.getException();
+                ex.printStackTrace();
+                new Alert(Alert.AlertType.ERROR, "Erreur d'enregistrement : " + ex.getMessage()).showAndWait();
+            });
+            new Thread(task).start();
         });
+
 
         form.getChildren().addAll(titreField, auteurField, categorieField, anneeField, quantiteField, saveButton);
         formStage.setScene(new Scene(form, 300, 300));
@@ -170,14 +169,35 @@ public class BookListWindow extends Stage {
     }
 
     private void deleteBook(Book book) {
-        try (Connection conn = DriverManager.getConnection("jdbc:oracle:thin:@localhost:1521:xe", "MAHMOUD", "mahmoud")) {
-            PreparedStatement stmt = conn.prepareStatement("DELETE FROM LIVRE WHERE CODE_LIVRE=?");
-            stmt.setInt(1, book.codeProperty().get());
-            stmt.executeUpdate();
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
+        Task<Integer> task = new Task<>() {
+            @Override protected Integer call() throws Exception {
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+                     PreparedStatement stmt = conn.prepareStatement(
+                             "DELETE FROM livres WHERE CodeLivre = ?")) {
+                    stmt.setInt(1, book.codeProperty().get());
+                    int n = stmt.executeUpdate();
+                    return n;
+                }
 
-        refreshTable();
+            }
+        };
+
+        task.setOnSucceeded(e -> {
+            int deleted = task.getValue();
+            if (deleted>0) {
+                tableView.getItems().remove(book);
+            } else {
+                new Alert(Alert.AlertType.WARNING, "Aucun livre supprimé.").showAndWait();
+            }
+        });
+        task.setOnFailed(e -> {
+            Throwable ex = task.getException();
+            ex.printStackTrace();
+            new Alert(Alert.AlertType.ERROR, "Erreur suppression : " + ex.getMessage()).showAndWait();
+        });
+
+        new Thread(task).start();
     }
+
+
 }

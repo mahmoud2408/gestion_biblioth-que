@@ -2,11 +2,13 @@ package app;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 import java.sql.*;
@@ -14,7 +16,10 @@ import java.sql.*;
 public class StudentListWindow extends Stage {
 
     private TableView<Etudiant> tableView;
-    private ObservableList<Etudiant> studentList;
+    private ObservableList<Etudiant> studentList = FXCollections.observableArrayList();
+    private static final String URL = "jdbc:oracle:thin:@localhost:1521:xe";
+    private static final String USER = "MAHMOUD";
+    private static final String PASS = "mahmoud";
 
     public StudentListWindow() {
         VBox root = new VBox(10);
@@ -24,6 +29,7 @@ public class StudentListWindow extends Stage {
 
         tableView = new TableView<>();
         setupTableView();
+        tableView.setItems(studentList);
 
         Button addButton = new Button("Ajouter");
         Button editButton = new Button("Modifier");
@@ -43,9 +49,8 @@ public class StudentListWindow extends Stage {
             if (selected != null) deleteStudent(selected);
         });
 
-        Scene scene = new Scene(root, 700, 400);
+        setScene(new Scene(root, 700, 400));
         setTitle("Gestion des étudiants");
-        setScene(scene);
 
         refreshTable();
     }
@@ -70,28 +75,30 @@ public class StudentListWindow extends Stage {
     }
 
     private void refreshTable() {
-        studentList = FXCollections.observableArrayList();
-        String url = "jdbc:oracle:thin:@localhost:1521:xe";
-        String user = "MAHMOUD";
-        String password = "mahmoud";
+        Task<ObservableList<Etudiant>> task = new Task<>() {
+            @Override
+            protected ObservableList<Etudiant> call() throws Exception {
+                ObservableList<Etudiant> list = FXCollections.observableArrayList();
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+                     Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM etudiants")) {
 
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM ETUDIANT")) {
-
-            while (rs.next()) {
-                studentList.add(new Etudiant(
-                        rs.getInt("NUM_ETUDIANT"),
-                        rs.getString("NOM"),
-                        rs.getString("PRENOM"),
-                        rs.getString("EMAIL"),
-                        rs.getString("TELEPHONE")
-                ));
+                    while (rs.next()) {
+                        list.add(new Etudiant(
+                                rs.getInt("NumEtudiant"),
+                                rs.getString("nom"),
+                                rs.getString("prenom"),
+                                rs.getString("email"),
+                                rs.getString("telephone")
+                        ));
+                    }
+                }
+                return list;
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        tableView.setItems(studentList);
+        };
+        task.setOnSucceeded(e -> studentList.setAll(task.getValue()));
+        task.setOnFailed(e -> task.getException().printStackTrace());
+        new Thread(task).start();
     }
 
     private void showStudentForm(Etudiant etudiant) {
@@ -117,36 +124,35 @@ public class StudentListWindow extends Stage {
 
         Button saveButton = new Button("Enregistrer");
         saveButton.setOnAction(e -> {
-            String nom = nomField.getText();
-            String prenom = prenomField.getText();
-            String email = emailField.getText();
-            String tel = telField.getText();
-
-            String url = "jdbc:oracle:thin:@localhost:1521:xe";
-            String user = "MAHMOUD";
-            String password = "mahmoud";
-            try (Connection conn = DriverManager.getConnection(url, user, password)) {
-                PreparedStatement stmt;
-                if (etudiant == null) {
-                    stmt = conn.prepareStatement("INSERT INTO ETUDIANT VALUES (SEQ_ETUDIANT.NEXTVAL, ?, ?, ?, ?)");
-                    stmt.setString(1, nom);
-                    stmt.setString(2, prenom);
-                    stmt.setString(3, email);
-                    stmt.setString(4, tel);
-                } else {
-                    stmt = conn.prepareStatement("UPDATE ETUDIANT SET NOM=?, PRENOM=?, EMAIL=?, TELEPHONE=? WHERE NUM_ETUDIANT=?");
-                    stmt.setString(1, nom);
-                    stmt.setString(2, prenom);
-                    stmt.setString(3, email);
-                    stmt.setString(4, tel);
-                    stmt.setInt(5, etudiant.getNumEtudiant());
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() throws Exception {
+                    try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
+                        PreparedStatement stmt;
+                        if (etudiant == null) {
+                            stmt = conn.prepareStatement("INSERT INTO etudiants VALUES (SEQ_etudiants.NEXTVAL, ?, ?, ?, ?)");
+                            stmt.setString(1, nomField.getText());
+                            stmt.setString(2, prenomField.getText());
+                            stmt.setString(3, emailField.getText());
+                            stmt.setString(4, telField.getText());
+                        } else {
+                            stmt = conn.prepareStatement("UPDATE etudiants SET nom=?, prenom=?, email=?, telephone=? WHERE NumEtudiant=?");
+                            stmt.setString(1, nomField.getText());
+                            stmt.setString(2, prenomField.getText());
+                            stmt.setString(3, emailField.getText());
+                            stmt.setString(4, telField.getText());
+                            stmt.setInt(5, etudiant.getNumEtudiant());
+                        }
+                        stmt.executeUpdate();
+                    }
+                    return null;
                 }
-                stmt.executeUpdate();
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-            formStage.close();
-            refreshTable();
+            };
+            task.setOnSucceeded(ev -> {
+                formStage.close();
+                refreshTable();
+            });
+            task.setOnFailed(ev -> task.getException().printStackTrace());
+            new Thread(task).start();
         });
 
         form.getChildren().addAll(nomField, prenomField, emailField, telField, saveButton);
@@ -156,16 +162,24 @@ public class StudentListWindow extends Stage {
     }
 
     private void deleteStudent(Etudiant etudiant) {
-        String url = "jdbc:oracle:thin:@localhost:1521:xe";
-        String user = "MAHMOUD";
-        String password = "mahmoud";
-        try (Connection conn = DriverManager.getConnection(url, user, password)) {
-            PreparedStatement stmt = conn.prepareStatement("DELETE FROM ETUDIANT WHERE NUM_ETUDIANT=?");
-            stmt.setInt(1, etudiant.getNumEtudiant());
-            stmt.executeUpdate();
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-        refreshTable();
+        Task<Integer> task = new Task<>() {
+            @Override protected Integer call() throws Exception {
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+                     PreparedStatement stmt = conn.prepareStatement("DELETE FROM etudiants WHERE NumEtudiant=?")) {
+                    stmt.setInt(1, etudiant.getNumEtudiant());
+                    return stmt.executeUpdate();
+                }
+            }
+        };
+        task.setOnSucceeded(e -> {
+            if (task.getValue() > 0) {
+                studentList.remove(etudiant);
+            } else {
+                new Alert(Alert.AlertType.WARNING, "Aucun étudiant supprimé.").showAndWait();
+            }
+        });
+        task.setOnFailed(e -> new Alert(Alert.AlertType.ERROR,
+                "Erreur suppression : " + task.getException().getMessage()).showAndWait());
+        new Thread(task).start();
     }
 }

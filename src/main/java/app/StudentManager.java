@@ -2,23 +2,41 @@ package app;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.scene.Scene;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
-import javafx.scene.control.cell.PropertyValueFactory;
-import java.sql.*;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 
 public class StudentManager {
+
+    private TableView<Etudiant> table = new TableView<>();
+    private ObservableList<Etudiant> studentList = FXCollections.observableArrayList();
 
     public StudentManager() {
         System.out.println("StudentManager constructor called");
 
-        // Create the TableView for Students
-        TableView<Etudiant> table = new TableView<>();
+        setupTable();
+        fetchStudentsAsync();
 
-        // Create the columns for the TableView
+        VBox layout = new VBox(table);
+        layout.setStyle("-fx-padding: 10;");
+
+        Scene scene = new Scene(layout, 600, 400);
+        Stage stage = new Stage();
+        stage.setTitle("Liste des Etudiants");
+        stage.setScene(scene);
+        stage.show();
+    }
+
+    private void setupTable() {
         TableColumn<Etudiant, Integer> numEtudiantCol = new TableColumn<>("Num Etudiant");
         numEtudiantCol.setCellValueFactory(new PropertyValueFactory<>("numEtudiant"));
 
@@ -34,57 +52,39 @@ public class StudentManager {
         TableColumn<Etudiant, String> telephoneCol = new TableColumn<>("Telephone");
         telephoneCol.setCellValueFactory(new PropertyValueFactory<>("telephone"));
 
-        // Add columns to the TableView
         table.getColumns().addAll(numEtudiantCol, nomCol, prenomCol, emailCol, telephoneCol);
-
-        // Fetch students from the database
-        ObservableList<Etudiant> students = getStudentList();
-        table.setItems(students);
-
-        System.out.println("Students fetched: " + students.size()); // Check the number of students
-
-        // Layout for the scene
-        VBox layout = new VBox(table);
-        layout.setStyle("-fx-padding: 10;");
-
-        // Create and show the scene
-        Scene scene = new Scene(layout, 600, 400);
-        Stage stage = new Stage();
-        stage.setTitle("Liste des Etudiants");
-        stage.setScene(scene);
-        stage.show();
+        table.setItems(studentList);
     }
 
-    private ObservableList<Etudiant> getStudentList() {
-        ObservableList<Etudiant> list = FXCollections.observableArrayList();
+    private void fetchStudentsAsync() {
+        Task<ObservableList<Etudiant>> task = new Task<>() {
+            @Override
+            protected ObservableList<Etudiant> call() throws Exception {
+                ObservableList<Etudiant> list = FXCollections.observableArrayList();
+                try (Connection conn = DriverManager.getConnection("jdbc:oracle:thin:@localhost:1521:xe", "MAHMOUD", "mahmoud");
+                     Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT * FROM etudiants")) {
 
-        try {
-            // Database connection
-            System.out.println("Connecting to the database...");
-            Connection conn = DriverManager.getConnection("jdbc:oracle:thin:@localhost:1521:xe", "MAHMOUD", "mahmoud");
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM Etudiant");
-
-            // Add students to the list
-            while (rs.next()) {
-                System.out.println("Found student: " + rs.getString("NOM") + " " + rs.getString("PRENOM"));
-                list.add(new Etudiant(
-                        rs.getInt("NUM_ETUDIANT"),
-                        rs.getString("NOM"),
-                        rs.getString("PRENOM"),
-                        rs.getString("EMAIL"),
-                        rs.getString("TELEPHONE")
-                ));
+                    while (rs.next()) {
+                        list.add(new Etudiant(
+                                rs.getInt("NumEtudiant"),
+                                rs.getString("nom"),
+                                rs.getString("prenom"),
+                                rs.getString("email"),
+                                rs.getString("telephone")
+                        ));
+                    }
+                }
+                return list;
             }
+        };
 
-            rs.close();
-            stmt.close();
-            conn.close();
-            System.out.println("Database connection closed.");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        task.setOnSucceeded(e -> {
+            studentList.setAll(task.getValue());
+            System.out.println("Students fetched: " + studentList.size());
+        });
 
-        return list;
+        task.setOnFailed(e -> task.getException().printStackTrace());
+        new Thread(task).start();
     }
 }

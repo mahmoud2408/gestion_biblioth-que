@@ -2,6 +2,7 @@ package app;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -17,10 +18,29 @@ import java.sql.SQLException;
 public class BookManager {
 
     private ObservableList<Book> bookList = FXCollections.observableArrayList();
+    private Connection connection;
+    private Stage stage;
 
     public void start(Stage stage, Connection connection) {
-        TableView<Book> tableView = new TableView<>();
+        this.stage = stage;
+        this.connection = connection;
 
+        TableView<Book> tableView = new TableView<>();
+        setupTable(tableView);
+
+        GridPane form = setupForm(tableView);
+
+        VBox root = new VBox(10, tableView, form);
+        root.setPadding(new Insets(10));
+
+        stage.setScene(new Scene(root, 800, 600));
+        stage.setTitle("Gestion des Livres");
+        stage.show();
+
+        loadBooksAsync(tableView);
+    }
+
+    private void setupTable(TableView<Book> tableView) {
         TableColumn<Book, Number> codeCol = new TableColumn<>("Code");
         codeCol.setCellValueFactory(data -> data.getValue().codeProperty());
 
@@ -41,56 +61,19 @@ public class BookManager {
 
         tableView.getColumns().addAll(codeCol, titreCol, auteurCol, categorieCol, anneeCol, quantiteCol);
         tableView.setItems(bookList);
+    }
 
-        TextField codeField = new TextField();
-        codeField.setPromptText("Code");
-
-        TextField titreField = new TextField();
-        titreField.setPromptText("Titre");
-
-        TextField auteurField = new TextField();
-        auteurField.setPromptText("Auteur");
-
-        TextField categorieField = new TextField();
-        categorieField.setPromptText("Catégorie");
-
-        TextField anneeField = new TextField();
-        anneeField.setPromptText("Année");
-
-        TextField quantiteField = new TextField();
-        quantiteField.setPromptText("Quantité");
+    private GridPane setupForm(TableView<Book> tableView) {
+        TextField codeField = new TextField(); codeField.setPromptText("Code");
+        TextField titreField = new TextField(); titreField.setPromptText("Titre");
+        TextField auteurField = new TextField(); auteurField.setPromptText("Auteur");
+        TextField categorieField = new TextField(); categorieField.setPromptText("Catégorie");
+        TextField anneeField = new TextField(); anneeField.setPromptText("Année");
+        TextField quantiteField = new TextField(); quantiteField.setPromptText("Quantité");
 
         Button addButton = new Button("Ajouter");
-        addButton.setOnAction(e -> {
-            try {
-                int code = Integer.parseInt(codeField.getText());
-                String titre = titreField.getText();
-                String auteur = auteurField.getText();
-                String categorie = categorieField.getText();
-                int annee = Integer.parseInt(anneeField.getText());
-                int quantite = Integer.parseInt(quantiteField.getText());
-
-                PreparedStatement stmt = connection.prepareStatement(
-                        "INSERT INTO Livre (CODE_LIVRE, TITRE, AUTEUR, CATEGORIE, ANNEE_PUBLICATION, QUANTITE_DISPONIBLE) VALUES (?, ?, ?, ?, ?, ?)");
-                stmt.setInt(1, code);
-                stmt.setString(2, titre);
-                stmt.setString(3, auteur);
-                stmt.setString(4, categorie);
-                stmt.setInt(5, annee);
-                stmt.setInt(6, quantite);
-                stmt.executeUpdate();
-
-                loadBooks(connection); // refresh table
-                codeField.clear();
-                titreField.clear();
-                auteurField.clear();
-                categorieField.clear();
-                anneeField.clear();
-                quantiteField.clear();
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        });
+        addButton.setOnAction(e -> addBookAsync(codeField, titreField, auteurField,
+                categorieField, anneeField, quantiteField, tableView));
 
         GridPane form = new GridPane();
         form.setPadding(new Insets(10));
@@ -109,33 +92,60 @@ public class BookManager {
         form.add(new Label("Quantité:"), 0, 5);
         form.add(quantiteField, 1, 5);
         form.add(addButton, 1, 6);
-
-        VBox root = new VBox(10, tableView, form);
-        root.setPadding(new Insets(10));
-
-        stage.setScene(new Scene(root, 800, 600));
-        stage.setTitle("Gestion des Livres");
-        stage.show();
-
-        loadBooks(connection);
+        return form;
     }
 
-    private void loadBooks(Connection connection) {
-        bookList.clear();
-        try {
-            PreparedStatement stmt = connection.prepareStatement("SELECT * FROM Livre");
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                int code = rs.getInt("CODE_LIVRE");
-                String titre = rs.getString("TITRE");
-                String auteur = rs.getString("AUTEUR");
-                String categorie = rs.getString("CATEGORIE");
-                int annee = rs.getInt("ANNEE_PUBLICATION");
-                int quantite = rs.getInt("QUANTITE_DISPONIBLE");
-                bookList.add(new Book(code, titre, auteur, categorie, annee, quantite));
+    private void loadBooksAsync(TableView<Book> tableView) {
+        Task<ObservableList<Book>> task = new Task<>() {
+            @Override protected ObservableList<Book> call() throws Exception {
+                ObservableList<Book> list = FXCollections.observableArrayList();
+                try (PreparedStatement stmt = connection.prepareStatement("SELECT * FROM livres");
+                     ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        list.add(new Book(
+                                rs.getInt("CodeLivre"),
+                                rs.getString("Titre"),
+                                rs.getString("Auteur"),
+                                rs.getString("Categorie"),
+                                rs.getInt("AnneePublication"),
+                                rs.getInt("QuantiteDisponible")
+                        ));
+                    }
+                }
+                return list;
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        };
+        task.setOnSucceeded(e -> tableView.setItems(task.getValue()));
+        task.setOnFailed(e -> task.getException().printStackTrace());
+        new Thread(task).start();
+    }
+
+    private void addBookAsync(TextField codeField, TextField titreField, TextField auteurField,
+                              TextField categorieField, TextField anneeField, TextField quantiteField,
+                              TableView<Book> tableView) {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                int code = Integer.parseInt(codeField.getText());
+                String titre = titreField.getText();
+                String auteur = auteurField.getText();
+                String categorie = categorieField.getText();
+                int annee = Integer.parseInt(anneeField.getText());
+                int quantite = Integer.parseInt(quantiteField.getText());
+                try (PreparedStatement stmt = connection.prepareStatement(
+                        "INSERT INTO livres (CodeLivre, Titre, Auteur, Categorie, AnneePublication, QuantiteDisponible) VALUES (?,?,?,?,?,?)")) {
+                    stmt.setInt(1, code);
+                    stmt.setString(2, titre);
+                    stmt.setString(3, auteur);
+                    stmt.setString(4, categorie);
+                    stmt.setInt(5, annee);
+                    stmt.setInt(6, quantite);
+                    stmt.executeUpdate();
+                }
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> loadBooksAsync(tableView));
+        task.setOnFailed(e -> task.getException().printStackTrace());
+        new Thread(task).start();
     }
 }
