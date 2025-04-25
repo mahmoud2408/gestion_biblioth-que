@@ -22,10 +22,17 @@ public class MainMenu extends Application {
             studentWindow.show();
         });
 
-        VBox root = new VBox(10); // 10 for spacing between buttons
-        root.getChildren().addAll(bookButton, studentButton);
+        // Nouveau bouton pour les emprunts
+        Button loanButton = new Button("Gérer les emprunts");
+        loanButton.setOnAction(e -> {
+            EmpruntListWindow loanWindow = new EmpruntListWindow();
+            loanWindow.show();
+        });
 
-        Scene scene = new Scene(root, 300, 200);
+        VBox root = new VBox(10); // 10 pour l'espacement entre les boutons
+        root.getChildren().addAll(bookButton, studentButton, loanButton); // Ajout du 3ème bouton
+
+        Scene scene = new Scene(root, 300, 250); // Augmentation de la hauteur pour accommoder le nouveau bouton
         primaryStage.setScene(scene);
         primaryStage.setTitle("Menu Principal");
         primaryStage.show();
