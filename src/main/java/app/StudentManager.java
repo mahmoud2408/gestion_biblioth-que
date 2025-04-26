@@ -38,7 +38,7 @@ public class StudentManager {
 
     private void setupTable() {
         TableColumn<Etudiant, Integer> numEtudiantCol = new TableColumn<>("Num Etudiant");
-        numEtudiantCol.setCellValueFactory(new PropertyValueFactory<>("numEtudiant"));
+        numEtudiantCol.setCellValueFactory(new PropertyValueFactory<>("NumEtudiant"));
 
         TableColumn<Etudiant, String> nomCol = new TableColumn<>("Nom");
         nomCol.setCellValueFactory(new PropertyValueFactory<>("nom"));

@@ -23,7 +23,6 @@ public class Emprunt {
         this.statut = new SimpleStringProperty(statut);
     }
 
-    // Getters pour les propriétés
     public IntegerProperty numEmpruntProperty() { return numEmprunt; }
     public StringProperty nomEtudiantProperty() { return nomEtudiant; }
     public StringProperty titreLivreProperty() { return titreLivre; }

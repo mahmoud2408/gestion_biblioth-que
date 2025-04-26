@@ -2,99 +2,253 @@ package app;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
-
 import java.sql.*;
 import java.time.LocalDate;
 
 public class EmpruntListWindow extends Stage {
 
     private TableView<Emprunt> tableView = new TableView<>();
-    private ObservableList<Emprunt> emprunts = FXCollections.observableArrayList();
+    private ObservableList<Emprunt> empruntList = FXCollections.observableArrayList();
     private static final String URL = "jdbc:oracle:thin:@localhost:1521:xe";
     private static final String USER = "MAHMOUD";
     private static final String PASS = "mahmoud";
 
     public EmpruntListWindow() {
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(10));
+        VBox root = new VBox(20);
+        root.setPadding(new Insets(20));
+        root.setStyle("-fx-background-color: #f8f9fa;");
 
-        Label title = new Label("Liste des emprunts");
+        // Header
+        HBox header = new HBox(20);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        Label title = new Label("Gestion des Emprunts");
+        title.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        TextField searchField = new TextField();
+        searchField.setPromptText("Rechercher un emprunt...");
+        searchField.setStyle("-fx-pref-width: 300px; -fx-padding: 8px;");
+
+        header.getChildren().addAll(title, searchField);
+
+        // Table Configuration
         setupTableView();
+        tableView.setStyle("-fx-border-radius: 8; -fx-background-radius: 8;");
 
-        Button addBtn = new Button("Ajouter un emprunt");
-        Button returnBtn = new Button("Emprunt Rendu");
+        // Buttons
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(Pos.CENTER);
 
-        addBtn.setOnAction(e -> showEmpruntForm());
-        returnBtn.setOnAction(e -> handleReturn());
+        Button addButton = createStyledButton("Ajouter", "#27ae60");
+        Button returnButton = createStyledButton("Marquer comme rendu", "#f1c40f");
 
-        HBox buttonBox = new HBox(10, addBtn, returnBtn);
+        addButton.setOnAction(e -> showEmpruntForm());
+        returnButton.setOnAction(e -> handleReturn());
 
-        root.getChildren().addAll(title, tableView, buttonBox);
-        setScene(new Scene(root, 800, 500));
-        setTitle("Gestion des emprunts");
-        refreshTable();
+        buttonBox.getChildren().addAll(addButton, returnButton);
+
+        // Search Functionality
+        FilteredList<Emprunt> filteredData = new FilteredList<>(empruntList, p -> true);
+        searchField.textProperty().addListener((obs, oldVal, newVal) ->
+                filteredData.setPredicate(emprunt ->
+                        emprunt.nomEtudiantProperty().get().toLowerCase().contains(newVal.toLowerCase()) ||
+                                emprunt.titreLivreProperty().get().toLowerCase().contains(newVal.toLowerCase())
+                )
+        );
+        tableView.setItems(filteredData);
+
+        root.getChildren().addAll(header, tableView, buttonBox);
+
+        Scene scene = new Scene(root, 1200, 800);
+        this.setScene(scene);
+        this.setTitle("Gestion des Emprunts");
+        loadEmpruntsAsync();
     }
 
     private void setupTableView() {
-        TableColumn<Emprunt, Integer> numEmpCol = new TableColumn<>("Num Emprunt");
-        numEmpCol.setCellValueFactory(e -> e.getValue().numEmpruntProperty().asObject());
+        TableColumn<Emprunt, Integer> numCol = new TableColumn<>("Numéro");
+        numCol.setCellValueFactory(new PropertyValueFactory<>("numEmprunt"));
 
         TableColumn<Emprunt, String> etudiantCol = new TableColumn<>("Étudiant");
-        etudiantCol.setCellValueFactory(e -> e.getValue().nomEtudiantProperty());
+        etudiantCol.setCellValueFactory(new PropertyValueFactory<>("nomEtudiant"));
 
         TableColumn<Emprunt, String> livreCol = new TableColumn<>("Livre");
-        livreCol.setCellValueFactory(e -> e.getValue().titreLivreProperty());
+        livreCol.setCellValueFactory(new PropertyValueFactory<>("titreLivre"));
 
         TableColumn<Emprunt, Date> dateEmpCol = new TableColumn<>("Date Emprunt");
-        dateEmpCol.setCellValueFactory(e -> e.getValue().dateEmpruntProperty());
+        dateEmpCol.setCellValueFactory(new PropertyValueFactory<>("dateEmprunt"));
 
         TableColumn<Emprunt, Date> retourPrevuCol = new TableColumn<>("Retour Prévu");
-        retourPrevuCol.setCellValueFactory(e -> e.getValue().dateRetourPrevuProperty());
+        retourPrevuCol.setCellValueFactory(new PropertyValueFactory<>("dateRetourPrevu"));
 
         TableColumn<Emprunt, Date> retourReelCol = new TableColumn<>("Retour Réel");
-        retourReelCol.setCellValueFactory(e -> e.getValue().dateRetourReelProperty());
+        retourReelCol.setCellValueFactory(new PropertyValueFactory<>("dateRetourReel"));
 
         TableColumn<Emprunt, String> statutCol = new TableColumn<>("Statut");
-        statutCol.setCellValueFactory(e -> e.getValue().statutProperty());
+        statutCol.setCellValueFactory(new PropertyValueFactory<>("statut"));
 
-        tableView.getColumns().addAll(numEmpCol, etudiantCol, livreCol, dateEmpCol, retourPrevuCol, retourReelCol, statutCol);
-        tableView.setItems(emprunts);
+        tableView.getColumns().addAll(numCol, etudiantCol, livreCol, dateEmpCol, retourPrevuCol, retourReelCol, statutCol);
+        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
     }
 
-    private void refreshTable() {
-        emprunts.clear();
-        String sql = "SELECT e.NumEmprunt, s.Nom AS Etudiant, l.Titre AS Livre, "
-                + "e.DateEmprunt, e.DateRetourPrevu, e.DateRetourReel, e.statut "
-                + "FROM emprunts e "
-                + "JOIN etudiants s ON e.NumEtudiant = s.NumEtudiant "
-                + "JOIN livres l ON e.CodeLivre = l.CodeLivre";
+    private Button createStyledButton(String text, String color) {
+        Button btn = new Button(text);
+        btn.setStyle("-fx-background-color: " + color + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 20;");
+        return btn;
+    }
 
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+    private void loadEmpruntsAsync() {
+        Task<ObservableList<Emprunt>> task = new Task<>() {
+            @Override
+            protected ObservableList<Emprunt> call() throws Exception {
+                ObservableList<Emprunt> list = FXCollections.observableArrayList();
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
+                     PreparedStatement stmt = conn.prepareStatement(
+                             "SELECT e.*, s.NOM, l.TITRE FROM emprunts e " +
+                                     "JOIN etudiants s ON e.NUMETUDIANT = s.NUMETUDIANT " +
+                                     "JOIN livres l ON e.CODELIVRE = l.CODELIVRE");
+                     ResultSet rs = stmt.executeQuery()) {
 
-            while (rs.next()) {
-                emprunts.add(new Emprunt(
-                        rs.getInt("NumEmprunt"),
-                        rs.getString("Etudiant"),
-                        rs.getString("Livre"),
-                        rs.getDate("DateEmprunt"),
-                        rs.getDate("DateRetourPrevu"),
-                        rs.getDate("DateRetourReel"),
-                        rs.getString("statut")
-                ));
+                    while (rs.next()) {
+                        list.add(new Emprunt(
+                                rs.getInt("NUMEMPRUNT"),
+                                rs.getString("NOM"),
+                                rs.getString("TITRE"),
+                                rs.getDate("DATEEMPRUNT"),
+                                rs.getDate("DATERETOURPREVU"),
+                                rs.getDate("DATERETOURREEL"),
+                                rs.getString("STATUT")
+                        ));
+                    }
+                }
+                return list;
             }
+        };
+
+        task.setOnSucceeded(e -> {
+            empruntList.setAll(task.getValue());
+            tableView.setItems(empruntList);
+        });
+        task.setOnFailed(e -> new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait());
+        new Thread(task).start();
+    }
+
+    private void showEmpruntForm() {
+        Stage formStage = new Stage();
+        VBox form = new VBox(15);
+        form.setPadding(new Insets(20));
+        form.setStyle("-fx-background-color: white; -fx-border-radius: 8;");
+
+        ComboBox<String> etudiantBox = new ComboBox<>();
+        ComboBox<String> livreBox = new ComboBox<>();
+        DatePicker dateEmpruntPicker = new DatePicker(LocalDate.now());
+        DatePicker dateRetourPicker = new DatePicker(LocalDate.now().plusDays(14));
+
+        // Charger les étudiants et livres
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
+            ResultSet rs = conn.createStatement().executeQuery("SELECT NOM FROM etudiants");
+            while (rs.next()) etudiantBox.getItems().add(rs.getString("NOM"));
+
+            rs = conn.createStatement().executeQuery("SELECT TITRE FROM livres WHERE QUANTITEDISPONIBLE > 0");
+            while (rs.next()) livreBox.getItems().add(rs.getString("TITRE"));
         } catch (SQLException e) {
-            e.printStackTrace();
             new Alert(Alert.AlertType.ERROR, "Erreur de chargement: " + e.getMessage()).showAndWait();
         }
+
+        Button saveButton = createStyledButton("Enregistrer", "#27ae60");
+        saveButton.setOnAction(e -> {
+            if (validateForm(etudiantBox, livreBox) && validateDates(dateEmpruntPicker, dateRetourPicker)) {
+                saveEmprunt(
+                        etudiantBox.getValue(),
+                        livreBox.getValue(),
+                        dateEmpruntPicker.getValue(),
+                        dateRetourPicker.getValue()
+                );
+                formStage.close();
+            }
+        });
+
+        form.getChildren().addAll(
+                new Label("Nouvel Emprunt"),
+                new Label("Étudiant"), etudiantBox,
+                new Label("Livre"), livreBox,
+                new Label("Date Emprunt"), dateEmpruntPicker,
+                new Label("Date Retour Prévu"), dateRetourPicker,
+                saveButton
+        );
+
+        formStage.setScene(new Scene(form, 400, 500));
+        formStage.show();
+    }
+
+    private boolean validateForm(ComboBox<?>... fields) {
+        for (ComboBox<?> field : fields) {
+            if (field.getValue() == null) {
+                new Alert(Alert.AlertType.ERROR, "Tous les champs doivent être sélectionnés !").showAndWait();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean validateDates(DatePicker... pickers) {
+        for (DatePicker picker : pickers) {
+            if (picker.getValue() == null) {
+                new Alert(Alert.AlertType.ERROR, "Toutes les dates doivent être renseignées !").showAndWait();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void saveEmprunt(String etudiant, String livre, LocalDate dateEmp, LocalDate dateRetour) {
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
+                    // Récupération NumEtudiant
+                    PreparedStatement stmt = conn.prepareStatement("SELECT NUMETUDIANT FROM etudiants WHERE NOM = ?");
+                    stmt.setString(1, etudiant);
+                    ResultSet rs = stmt.executeQuery();
+                    int numEtudiant = rs.next() ? rs.getInt("NUMETUDIANT") : 0;
+
+                    // Récupération CodeLivre
+                    stmt = conn.prepareStatement("SELECT CODELIVRE FROM livres WHERE TITRE = ?");
+                    stmt.setString(1, livre);
+                    rs = stmt.executeQuery();
+                    int codeLivre = rs.next() ? rs.getInt("CODELIVRE") : 0;
+
+                    // Insertion emprunt
+                    stmt = conn.prepareStatement(
+                            "INSERT INTO emprunts (NUMEMPRUNT, NUMETUDIANT, CODELIVRE, DATEEMPRUNT, DATERETOURPREVU, STATUT) " +
+                                    "VALUES (seq_emprunts.NEXTVAL, ?, ?, ?, ?, 'emprunté')");
+                    stmt.setInt(1, numEtudiant);
+                    stmt.setInt(2, codeLivre);
+                    stmt.setDate(3, Date.valueOf(dateEmp));
+                    stmt.setDate(4, Date.valueOf(dateRetour));
+                    stmt.executeUpdate();
+
+                    // Mise à jour quantité livre
+                    stmt = conn.prepareStatement("UPDATE livres SET QUANTITEDISPONIBLE = QUANTITEDISPONIBLE - 1 WHERE CODELIVRE = ?");
+                    stmt.setInt(1, codeLivre);
+                    stmt.executeUpdate();
+                }
+                return null;
+            }
+        };
+
+        task.setOnSucceeded(e -> loadEmpruntsAsync());
+        task.setOnFailed(e -> new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait());
+        new Thread(task).start();
     }
 
     private void handleReturn() {
@@ -105,40 +259,37 @@ public class EmpruntListWindow extends Stage {
         }
 
         Stage dateStage = new Stage();
-        VBox form = new VBox(10);
-        form.setPadding(new Insets(10));
+        VBox form = new VBox(15);
+        form.setPadding(new Insets(20));
+        form.setStyle("-fx-background-color: white; -fx-border-radius: 8;");
 
         DatePicker dateRetourReelPicker = new DatePicker(LocalDate.now());
-        Button confirmBtn = new Button("Confirmer");
+        Button confirmButton = createStyledButton("Confirmer", "#27ae60");
 
-        confirmBtn.setOnAction(e -> {
-            LocalDate dateRetourReel = dateRetourReelPicker.getValue();
-            LocalDate dateEmprunt = selected.dateEmpruntProperty().get().toLocalDate();
-
-            // Validation date retour réel
-            if (dateRetourReel.isBefore(dateEmprunt)) {
-                new Alert(Alert.AlertType.ERROR,
-                        "La date de retour réel ne peut pas être avant la date d'emprunt !").showAndWait();
+        confirmButton.setOnAction(e -> {
+            LocalDate dateRetour = dateRetourReelPicker.getValue();
+            if (dateRetour.isBefore(selected.dateEmpruntProperty().get().toLocalDate())) {
+                new Alert(Alert.AlertType.ERROR, "Date de retour invalide !").showAndWait();
                 return;
             }
 
-            Task<Void> task = new Task<Void>() {
+            Task<Void> task = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
                     try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
                         // Mise à jour emprunt
                         PreparedStatement stmt = conn.prepareStatement(
-                                "UPDATE emprunts SET statut = 'rendu', DateRetourReel = ? WHERE NumEmprunt = ?");
-                        stmt.setDate(1, Date.valueOf(dateRetourReel));
+                                "UPDATE emprunts SET STATUT = 'rendu', DATERETOURREEL = ? WHERE NUMEMPRUNT = ?");
+                        stmt.setDate(1, Date.valueOf(dateRetour));
                         stmt.setInt(2, selected.numEmpruntProperty().get());
                         stmt.executeUpdate();
 
-                        // Mise à jour quantité livre
-                        PreparedStatement updateStmt = conn.prepareStatement(
-                                "UPDATE livres SET QuantiteDisponible = QuantiteDisponible + 1 " +
-                                        "WHERE CodeLivre = (SELECT CodeLivre FROM emprunts WHERE NumEmprunt = ?)");
-                        updateStmt.setInt(1, selected.numEmpruntProperty().get());
-                        updateStmt.executeUpdate();
+                        // Mise à jour stock livre
+                        stmt = conn.prepareStatement(
+                                "UPDATE livres SET QUANTITEDISPONIBLE = QUANTITEDISPONIBLE + 1 " +
+                                        "WHERE CODELIVRE = (SELECT CODELIVRE FROM emprunts WHERE NUMEMPRUNT = ?)");
+                        stmt.setInt(1, selected.numEmpruntProperty().get());
+                        stmt.executeUpdate();
                     }
                     return null;
                 }
@@ -146,13 +297,10 @@ public class EmpruntListWindow extends Stage {
 
             task.setOnSucceeded(ev -> {
                 dateStage.close();
-                refreshTable();
-                new Alert(Alert.AlertType.INFORMATION, "Retour enregistré avec succès !").showAndWait();
+                loadEmpruntsAsync();
+                new Alert(Alert.AlertType.INFORMATION, "Retour enregistré !").showAndWait();
             });
-
-            task.setOnFailed(ev -> {
-                new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait();
-            });
+            task.setOnFailed(ev -> new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait());
 
             new Thread(task).start();
         });
@@ -160,64 +308,10 @@ public class EmpruntListWindow extends Stage {
         form.getChildren().addAll(
                 new Label("Date de retour réel:"),
                 dateRetourReelPicker,
-                confirmBtn
+                confirmButton
         );
 
-        dateStage.setScene(new Scene(form));
-        dateStage.setTitle("Enregistrement du retour");
+        dateStage.setScene(new Scene(form, 300, 200));
         dateStage.show();
-    }
-
-    private void showEmpruntForm() {
-        Stage formStage = new Stage();
-        VBox form = new VBox(10);
-        form.setPadding(new Insets(10));
-
-        ComboBox<String> etudiantBox = new ComboBox<>();
-        ComboBox<String> livreBox = new ComboBox<>();
-        ObservableList<String> statutOptions = FXCollections.observableArrayList("emprunté", "rendu");
-        ComboBox<String> statutBox = new ComboBox<>(statutOptions);
-        statutBox.setValue("emprunté");
-
-        DatePicker dateEmpruntPicker = new DatePicker(LocalDate.now());
-        DatePicker dateRetourPrevuPicker = new DatePicker(LocalDate.now().plusDays(14));
-
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS)) {
-            ResultSet rs1 = conn.createStatement().executeQuery("SELECT Nom FROM etudiants");
-            while (rs1.next()) etudiantBox.getItems().add(rs1.getString("Nom"));
-
-            ResultSet rs2 = conn.createStatement().executeQuery("SELECT Titre FROM livres");
-            while (rs2.next()) livreBox.getItems().add(rs2.getString("Titre"));
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        Button saveBtn = new Button("Enregistrer");
-        saveBtn.setOnAction(e -> {
-            // Validation des dates
-            LocalDate dateEmp = dateEmpruntPicker.getValue();
-            LocalDate dateRetourPrevu = dateRetourPrevuPicker.getValue();
-
-            if (dateRetourPrevu.isBefore(dateEmp)) {
-                new Alert(Alert.AlertType.ERROR,
-                        "La date de retour prévu ne peut pas être avant la date d'emprunt !").showAndWait();
-                return;
-            }
-
-            // ... (reste du code d'enregistrement) ...
-        });
-
-        form.getChildren().addAll(
-                new Label("Étudiant"), etudiantBox,
-                new Label("Livre"), livreBox,
-                new Label("Date Emprunt"), dateEmpruntPicker,
-                new Label("Date Retour Prévu"), dateRetourPrevuPicker,
-                new Label("Statut"), statutBox,
-                saveBtn
-        );
-
-        formStage.setScene(new Scene(form));
-        formStage.setTitle("Nouvel Emprunt");
-        formStage.show();
     }
 }

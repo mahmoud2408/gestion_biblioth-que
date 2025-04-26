@@ -1,40 +1,25 @@
 package app;
 
+import javafx.beans.property.*;
+
 public class Etudiant {
+    private final IntegerProperty NumEtudiant;
+    private final StringProperty nom;
+    private final StringProperty prenom;
+    private final StringProperty email;
+    private final StringProperty telephone;
 
-    private int numEtudiant;
-    private String nom;
-    private String prenom;
-    private String email;
-    private String telephone;
-
-    // Constructor
-    public Etudiant(int numEtudiant, String nom, String prenom, String email, String telephone) {
-        this.numEtudiant = numEtudiant;
-        this.nom = nom;
-        this.prenom = prenom;
-        this.email = email;
-        this.telephone = telephone;
+    public Etudiant(int NumEtudiant, String nom, String prenom, String email, String telephone) {
+        this.NumEtudiant = new SimpleIntegerProperty(NumEtudiant);
+        this.nom = new SimpleStringProperty(nom);
+        this.prenom = new SimpleStringProperty(prenom);
+        this.email = new SimpleStringProperty(email);
+        this.telephone = new SimpleStringProperty(telephone);
     }
 
-    // Getters
-    public int getNumEtudiant() {
-        return numEtudiant;
-    }
-
-    public String getNom() {
-        return nom;
-    }
-
-    public String getPrenom() {
-        return prenom;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public String getTelephone() {
-        return telephone;
-    }
+    public IntegerProperty numEtudiantProperty() { return NumEtudiant; }
+    public StringProperty nomProperty() { return nom; }
+    public StringProperty prenomProperty() { return prenom; }
+    public StringProperty emailProperty() { return email; }
+    public StringProperty telephoneProperty() { return telephone; }
 }
