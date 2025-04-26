@@ -63,10 +63,21 @@ public class StudentListWindow extends Stage {
         // Search Functionality
         FilteredList<Etudiant> filteredData = new FilteredList<>(studentList, p -> true);
         searchField.textProperty().addListener((obs, oldVal, newVal) ->
-                filteredData.setPredicate(etudiant ->
-                        etudiant.nomProperty().get().toLowerCase().contains(newVal.toLowerCase())
-                )
+                filteredData.setPredicate(etudiant -> {
+                    String nom = etudiant.nomProperty().get() != null ? etudiant.nomProperty().get().toLowerCase() : "";
+                    String prenom = etudiant.prenomProperty().get() != null ? etudiant.prenomProperty().get().toLowerCase() : "";
+                    String email = etudiant.emailProperty().get() != null ? etudiant.emailProperty().get().toLowerCase() : "";
+                    String numetudiant = String.valueOf(etudiant.numEtudiantProperty().get());
+                    String telephone = etudiant.telephoneProperty().get() != null ? etudiant.telephoneProperty().get().toLowerCase() : "";
+
+                    return nom.contains(newVal.toLowerCase()) ||
+                            prenom.contains(newVal.toLowerCase()) ||
+                            email.contains(newVal.toLowerCase()) ||
+                            telephone.contains(newVal.toLowerCase())||
+                            numetudiant.contains(newVal.toLowerCase());
+                })
         );
+
         tableView.setItems(filteredData);
 
         root.getChildren().addAll(header, tableView, buttonBox);
@@ -128,7 +139,7 @@ public class StudentListWindow extends Stage {
 
         task.setOnSucceeded(e -> {
             studentList.setAll(task.getValue());
-            tableView.setItems(studentList);
+            tableView.refresh();
         });
         task.setOnFailed(e -> new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait());
         new Thread(task).start();

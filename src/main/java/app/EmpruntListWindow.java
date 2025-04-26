@@ -57,15 +57,44 @@ public class EmpruntListWindow extends Stage {
         buttonBox.getChildren().addAll(addButton, returnButton);
 
         // Search Functionality
+        // Dans le constructeur, remplacer la partie "Search Functionality" par :
         FilteredList<Emprunt> filteredData = new FilteredList<>(empruntList, p -> true);
-        searchField.textProperty().addListener((obs, oldVal, newVal) ->
-                filteredData.setPredicate(emprunt ->
-                        emprunt.nomEtudiantProperty().get().toLowerCase().contains(newVal.toLowerCase()) ||
-                                emprunt.titreLivreProperty().get().toLowerCase().contains(newVal.toLowerCase())
-                )
-        );
-        tableView.setItems(filteredData);
 
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            filteredData.setPredicate(emprunt -> {
+                // Si le champ est vide, affiche tous les éléments
+                if (newVal == null || newVal.isEmpty()) {
+                    return true;
+                }
+
+                String lowerCaseFilter = newVal.toLowerCase();
+
+                // Vérification null-safe pour nomEtudiant
+                if (emprunt.nomEtudiantProperty().get() != null &&
+                        emprunt.nomEtudiantProperty().get().toLowerCase().contains(lowerCaseFilter)) {
+                    return true;
+                }
+
+                // Vérification null-safe pour titreLivre
+                if (emprunt.titreLivreProperty().get() != null &&
+                        emprunt.titreLivreProperty().get().toLowerCase().contains(lowerCaseFilter)) {
+                    return true;
+                }
+
+                if (emprunt.dateEmpruntProperty().get()!=null && emprunt.dateEmpruntProperty().get().toLocalDate().toString().contains(lowerCaseFilter)){return true;}
+
+                if (emprunt.dateRetourPrevuProperty().get()!=null && emprunt.dateRetourPrevuProperty().get().toLocalDate().toString().contains(lowerCaseFilter)){return true;}
+
+                if (emprunt.statutProperty().get()!=null && emprunt.statutProperty().get().toLowerCase().contains(lowerCaseFilter)){return true;}
+
+                if (emprunt.numEmpruntProperty().asObject().get() != null && String.valueOf(emprunt.numEmpruntProperty().get()).contains(lowerCaseFilter)) { return true; }
+
+                return false; // Aucune correspondance
+            });
+        });
+
+// Lier la liste filtrée à la TableView
+        tableView.setItems(filteredData);
         root.getChildren().addAll(header, tableView, buttonBox);
 
         Scene scene = new Scene(root, 1200, 800);
@@ -136,7 +165,8 @@ public class EmpruntListWindow extends Stage {
 
         task.setOnSucceeded(e -> {
             empruntList.setAll(task.getValue());
-            tableView.setItems(empruntList);
+            tableView.refresh();
+
         });
         task.setOnFailed(e -> new Alert(Alert.AlertType.ERROR, "Erreur: " + task.getException().getMessage()).showAndWait());
         new Thread(task).start();

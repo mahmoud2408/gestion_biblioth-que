@@ -13,6 +13,8 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
 import java.sql.*;
+import java.util.Locale;
+import java.util.Optional;
 
 public class BookListWindow extends Stage {
 
@@ -63,11 +65,26 @@ public class BookListWindow extends Stage {
 
         // Search Functionality
         FilteredList<Book> filteredData = new FilteredList<>(bookList, p -> true);
-        searchField.textProperty().addListener((obs, oldVal, newVal) ->
-                filteredData.setPredicate(book ->
-                        book.titreProperty().get().toLowerCase().contains(newVal.toLowerCase())
-                )
-        );
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            filteredData.setPredicate(book -> {
+                if (newVal == null || newVal.isEmpty()) return true;
+
+                String lowerCaseFilter = newVal.toLowerCase(Locale.FRENCH);
+
+                // Conversion des numériques en String pour la recherche
+                String annee = String.valueOf(book.anneeProperty().get());
+                String code = String.valueOf(book.codeProperty().get());
+
+                return Optional.ofNullable(book.titreProperty().get()).orElse("").toLowerCase().contains(lowerCaseFilter)
+                        || Optional.ofNullable(book.auteurProperty().get()).orElse("").toLowerCase().contains(lowerCaseFilter)
+                        || Optional.ofNullable(book.categorieProperty().get()).orElse("").toLowerCase().contains(lowerCaseFilter)
+                        || annee.contains(lowerCaseFilter) // Recherche par année
+                        || code.contains(lowerCaseFilter); // Recherche par code
+            });
+
+            tableView.refresh();
+        });
+
         tableView.setItems(filteredData);
 
         root.getChildren().addAll(header, tableView, buttonBox);
